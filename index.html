@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹냥이의 썸네일 메이커 (AI Powered)</title>
+    <style>
+        :root { --bg-color: #1a1a1a; --point-color: #ff9f43; --text-color: #fff; }
+        body { margin: 0; padding: 20px; font-family: 'Pretendard', sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; }
+        h1 { color: var(--point-color); margin-bottom: 10px; }
+        .controls { background: #333; padding: 20px; border-radius: 10px; margin-bottom: 20px; width: 100%; max-width: 800px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        input[type="file"], input[type="text"] { padding: 10px; border-radius: 5px; border: none; }
+        button { padding: 10px 20px; background: var(--point-color); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { opacity: 0.8; }
+        #canvas-container { box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 2px solid #555; }
+        .loading { display: none; margin-top: 10px; color: #aaa; font-size: 0.9em; }
+        
+        /* 모바일 대응 */
+        @media (max-width: 600px) { .controls { flex-direction: column; } }
+    </style>
+    <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.0.4/dist/imgly-background-removal.min.js"></script>
+</head>
+<body>
+
+    <h1>🐱 웹냥이 썸네일 메이커</h1>
+    <p>이미지를 올리면 AI가 자동으로 배경을 지워줍니다!</p>
+
+    <div class="controls">
+        <input type="file" id="imgLoader" multiple accept="image/*">
+        <input type="text" id="textInput" placeholder="썸네일 문구 입력 (예: 충격 실화!)">
+        <button onclick="addText()">글씨 넣기</button>
+        <button onclick="downloadImage()">💾 저장하기</button>
+    </div>
+    
+    <div class="loading" id="loadingMsg">AI가 열심히 누끼를 따고 있어요... (잠시만 기다려주세요!) 🐾</div>
+
+    <div id="canvas-container">
+        <canvas id="c" width="1280" height="720"></canvas>
+    </div>
+
+    <script>
+        // 1. 캔버스 초기화 (유튜브 썸네일 사이즈 1280x720)
+        const canvas = new fabric.Canvas('c');
+        canvas.backgroundColor = '#222'; // 기본 배경색
+        canvas.renderAll();
+
+        // 2. 이미지 업로드 및 AI 배경 제거 처리
+        document.getElementById('imgLoader').addEventListener('change', async function(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            const loadingMsg = document.getElementById('loadingMsg');
+            loadingMsg.style.display = 'block';
+
+            for (let file of files) {
+                try {
+                    console.log(`Processing: ${file.name}`);
+                    // @imgly 라이브러리로 배경 제거 (브라우저에서 바로 실행)
+                    const blob = await imglyRemoveBackground(file);
+                    const url = URL.createObjectURL(blob);
+
+                    fabric.Image.fromURL(url, function(img) {
+                        // 이미지 크기 조정 (너무 크면 줄임)
+                        if (img.width > 500) {
+                            img.scaleToWidth(400);
+                        }
+                        // 캔버스 중앙에 배치
+                        img.set({
+                            left: canvas.width / 2 - 200 + (Math.random() * 50),
+                            top: canvas.height / 2 - 200 + (Math.random() * 50)
+                        });
+                        canvas.add(img);
+                        canvas.setActiveObject(img);
+                    });
+                } catch (error) {
+                    console.error("배경 제거 실패:", error);
+                    alert(`${file.name} 처리 중 오류가 발생했어요 ㅠㅠ`);
+                }
+            }
+            loadingMsg.style.display = 'none';
+        });
+
+        // 3. 텍스트 추가 기능
+        function addText() {
+            const textVal = document.getElementById('textInput').value;
+            if (!textVal) return;
+
+            const text = new fabric.Text(textVal, {
+                left: 100,
+                top: 100,
+                fontFamily: 'Pretendard',
+                fontSize: 80,
+                fill: 'yellow',
+                stroke: 'black',
+                strokeWidth: 2,
+                fontWeight: 'bold',
+                shadow: new fabric.Shadow({ color: "rgba(0,0,0,0.8)", blur: 10, offsetX: 5, offsetY: 5 })
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        }
+
+        // 4. 다운로드 기능
+        function downloadImage() {
+            const dataURL = canvas.toDataURL({
+                format: 'png',
+                quality: 1.0
+            });
+            const link = document.createElement('a');
+            link.download = 'thumbnail.png';
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // 키보드 Delete 키로 객체 삭제
+        window.addEventListener('keydown', function(e) {
+            if(e.key === 'Delete') {
+                const activeObjects = canvas.getActiveObjects();
+                if (activeObjects.length) {
+                    canvas.discardActiveObject();
+                    activeObjects.forEach(function(obj) {
+                        canvas.remove(obj);
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
