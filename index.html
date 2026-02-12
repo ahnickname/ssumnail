@@ -3,36 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>웹냥이의 썸네일 메이커 V3</title>
+    <title>웹냥이의 썸네일 메이커 V4</title>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">
     <style>
-        :root { --bg-color: #1a1a1a; --point-color: #ff9f43; --text-color: #fff; }
+        :root { --bg-color: #1a1a1a; --point-color: #ffce44; --text-color: #fff; }
         body { margin: 0; padding: 20px; font-family: 'Pretendard', sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; }
-        h1 { color: var(--point-color); margin-bottom: 10px; }
-        .controls { background: #333; padding: 20px; border-radius: 10px; margin-bottom: 20px; width: 100%; max-width: 800px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-        input[type="file"], input[type="text"] { padding: 10px; border-radius: 5px; border: none; }
-        button { padding: 10px 20px; background: var(--point-color); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        button:hover { opacity: 0.8; }
-        #canvas-container { box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 2px solid #555; }
-        .loading { display: none; margin-top: 10px; color: #ff9f43; font-weight: bold; font-size: 1.1em; }
-        @media (max-width: 600px) { .controls { flex-direction: column; } }
+        h1 { color: var(--point-color); margin-bottom: 10px; font-family: 'Black Han Sans', sans-serif; letter-spacing: 2px; }
+        .controls { background: #333; padding: 20px; border-radius: 10px; margin-bottom: 20px; width: 100%; max-width: 900px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+        input[type="file"] { padding: 10px; background: #444; border-radius: 5px; color: #ddd; }
+        input[type="text"] { padding: 12px; border-radius: 5px; border: none; font-size: 1.1em; width: 250px; font-family: 'Black Han Sans', sans-serif; }
+        button { padding: 12px 24px; background: var(--point-color); color: black; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 1.1em; transition: 0.3s; font-family: 'Black Han Sans', sans-serif; }
+        button:hover { transform: scale(1.05); box-shadow: 0 5px 15px rgba(255, 206, 68, 0.4); }
+        #canvas-container { box-shadow: 0 10px 30px rgba(0,0,0,0.8); border-radius: 10px; overflow: hidden; }
+        .loading { display: none; margin: 20px 0; color: var(--point-color); font-weight: bold; font-size: 1.2em; animation: blink 1.5s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        @media (max-width: 700px) { .controls { flex-direction: column; } input[type="text"] { width: 90%; } }
     </style>
     <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.0.4/dist/imgly-background-removal.min.js"></script>
 </head>
 <body>
 
-    <h1>🐱 웹냥이 썸네일 메이커 V3</h1>
-    <p>이제 한글 파일 이름도 문제없어요!</p>
+    <h1>⚡ 웹냥이 썸네일 메이커 V4</h1>
+    <p>여러 장을 올리면 알아서 펼쳐줍니다! 글씨도 더 예뻐졌어요.</p>
 
     <div class="controls">
         <input type="file" id="imgLoader" multiple accept="image/*">
-        <input type="text" id="textInput" placeholder="문구 입력 (예: 대박 사건)">
-        <button onclick="addText()">글씨 넣기</button>
+        <input type="text" id="textInput" placeholder="문구 입력 (예: 역대급!!)">
+        <button onclick="addText()" style="background:#fff; color:black;">🅰️ 글씨 넣기</button>
         <button onclick="downloadImage()">💾 저장하기</button>
-        <button onclick="deleteObject()" style="background:#ff4343;">🗑️ 선택 삭제</button>
+        <button onclick="clearCanvas()" style="background:#ff5f5f; color:white;">✨ 전체 지우기</button>
     </div>
     
-    <div class="loading" id="loadingMsg">🐾 AI가 열심히 배경을 지우고 있어요...</div>
+    <div class="loading" id="loadingMsg">🐾 AI가 이미지를 분석하고 있습니다...</div>
 
     <div id="canvas-container">
         <canvas id="c" width="1280" height="720"></canvas>
@@ -40,8 +43,19 @@
 
     <script>
         const canvas = new fabric.Canvas('c');
-        canvas.backgroundColor = '#222';
-        canvas.renderAll();
+        
+        // 배경을 좀 더 느낌 있는 그라데이션으로 변경
+        const bgGradient = new fabric.Gradient({
+            type: 'linear',
+            coords: { x1: 0, y1: 0, x2: 1280, y2: 720 },
+            colorStops: [
+                { offset: 0, color: '#2c3e50' },
+                { offset: 1, color: '#000000' }
+            ]
+        });
+        canvas.setBackgroundColor(bgGradient, canvas.renderAll.bind(canvas));
+
+        let imageCount = 0; // 올라간 이미지 개수 세기
 
         document.getElementById('imgLoader').addEventListener('change', async function(e) {
             const files = e.target.files;
@@ -49,47 +63,63 @@
 
             const loadingMsg = document.getElementById('loadingMsg');
             loadingMsg.style.display = 'block';
+            
+            // [핵심 2] 여러 장 올릴 때 자동 배치를 위한 계산
+            const startX = 200; // 첫 이미지 시작 위치
+            const spacing = 300; // 이미지 간격
 
             for (let i = 0; i < files.length; i++) {
                 let file = files[i];
                 try {
-                    // [핵심] 파일 이름을 강제로 영어로 변경해서 AI에게 전달 (오류 방지)
+                    loadingMsg.innerText = `⏳ ${file.name} 배경 따는 중... (${i+1}/${files.length})`;
+                    
+                    // 한글 파일명 오류 방지
                     const safeName = `image_${Date.now()}_${i}.png`;
                     const safeFile = new File([file], safeName, { type: file.type });
-
-                    loadingMsg.innerText = `⏳ 처리 중... (${i+1}/${files.length})`;
-
-                    // AI 설정
-                    const config = {
-                        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.0.4/dist/"
-                    };
-
+                    
+                    const config = { publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.0.4/dist/" };
                     const blob = await imglyRemoveBackground(safeFile, config);
                     const url = URL.createObjectURL(blob);
 
                     fabric.Image.fromURL(url, function(img) {
-                        if (img.width > 500) img.scaleToWidth(400);
+                        // 이미지 크기 적당히 조절
+                        if (img.width > 600) img.scaleToWidth(500);
+                        if (img.height > 600) img.scaleToHeight(500);
+
+                        // [핵심 2 구현] 순서대로 옆으로 착착 펼쳐서 배치
                         img.set({
-                            left: canvas.width / 2 - 200 + (Math.random() * 50),
-                            top: canvas.height / 2 - 200 + (Math.random() * 50)
+                            left: startX + (imageCount * spacing), // 개수에 따라 옆으로 이동
+                            top: canvas.height / 2 - (img.getScaledHeight() / 2) + (imageCount * 30), // 약간씩 아래로
+                            shadow: new fabric.Shadow({ color: "rgba(0,0,0,0.5)", blur: 20, offsetX: 10, offsetY: 10 }) // 그림자 추가
                         });
+
                         canvas.add(img);
                         canvas.setActiveObject(img);
+                        imageCount++; // 개수 증가
                     });
                 } catch (error) {
                     console.error(error);
-                    alert("죄송해요, 이 이미지는 처리가 어렵네요 ㅠㅠ 다른 이미지를 시도해주세요.");
+                    alert(`${file.name} 처리에 실패했습니다 ㅠㅠ`);
                 }
             }
             loadingMsg.style.display = 'none';
+            // 파일 입력창 초기화 (같은 파일 다시 올릴 수 있게)
+            e.target.value = ''; 
         });
 
         function addText() {
             const textVal = document.getElementById('textInput').value;
             if (!textVal) return;
+            
+            // [핵심 1 구현] 폰트를 'Black Han Sans'로 변경하고 스타일 강화
             const text = new fabric.Text(textVal, {
-                left: 100, top: 100, fontFamily: 'sans-serif', fontSize: 80,
-                fill: 'yellow', stroke: 'black', strokeWidth: 2, fontWeight: 'bold'
+                left: canvas.width / 2, top: 100, originX: 'center',
+                fontFamily: '"Black Han Sans", sans-serif', // <-- 여기!
+                fontSize: 120,
+                fill: '#ffce44', // 노란색 채우기
+                stroke: '#000', // 검은색 테두리
+                strokeWidth: 6, // 테두리 두께
+                shadow: new fabric.Shadow({ color: "#000", blur: 0, offsetX: 8, offsetY: 8 }) // 딱딱한 그림자 효과
             });
             canvas.add(text);
             canvas.setActiveObject(text);
@@ -98,21 +128,30 @@
         function downloadImage() {
             const dataURL = canvas.toDataURL({ format: 'png', quality: 1.0 });
             const link = document.createElement('a');
-            link.download = 'thumbnail.png';
+            link.download = 'thumbnail_v4.png';
             link.href = dataURL;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        function deleteObject() {
-            const activeObjects = canvas.getActiveObjects();
-            if (activeObjects.length) {
-                canvas.discardActiveObject();
-                activeObjects.forEach((obj) => canvas.remove(obj));
+        function clearCanvas() {
+            if(confirm('캔버스를 모두 지울까요?')) {
+                canvas.clear();
+                canvas.setBackgroundColor(bgGradient, canvas.renderAll.bind(canvas));
+                imageCount = 0;
             }
         }
-        window.addEventListener('keydown', (e) => { if(e.key === 'Delete') deleteObject(); });
+
+        window.addEventListener('keydown', (e) => {
+            if(e.key === 'Delete') {
+                const activeObjects = canvas.getActiveObjects();
+                if (activeObjects.length) {
+                    canvas.discardActiveObject();
+                    activeObjects.forEach((obj) => canvas.remove(obj));
+                }
+            }
+        });
     </script>
 </body>
 </html>
