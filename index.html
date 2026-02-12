@@ -13,9 +13,8 @@
         button { padding: 10px 20px; background: var(--point-color); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
         button:hover { opacity: 0.8; }
         #canvas-container { box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 2px solid #555; }
-        .loading { display: none; margin-top: 10px; color: #aaa; font-size: 0.9em; }
+        .loading { display: none; margin-top: 10px; color: #ff9f43; font-weight: bold; font-size: 1.1em; }
         
-        /* 모바일 대응 */
         @media (max-width: 600px) { .controls { flex-direction: column; } }
     </style>
     <script src="https://unpkg.com/fabric@5.3.0/dist/fabric.min.js"></script>
@@ -23,29 +22,28 @@
 </head>
 <body>
 
-    <h1>🐱 웹냥이 썸네일 메이커</h1>
-    <p>이미지를 올리면 AI가 자동으로 배경을 지워줍니다!</p>
+    <h1>🐱 웹냥이 썸네일 메이커 V2</h1>
+    <p>이미지를 올리면 AI가 배경을 지워줍니다! (조금만 기다려주세요)</p>
 
     <div class="controls">
         <input type="file" id="imgLoader" multiple accept="image/*">
-        <input type="text" id="textInput" placeholder="썸네일 문구 입력 (예: 충격 실화!)">
+        <input type="text" id="textInput" placeholder="문구 입력 (예: 충격 실화!)">
         <button onclick="addText()">글씨 넣기</button>
         <button onclick="downloadImage()">💾 저장하기</button>
+        <button onclick="deleteObject()" style="background:#ff4343;">🗑️ 선택 삭제</button>
     </div>
     
-    <div class="loading" id="loadingMsg">AI가 열심히 누끼를 따고 있어요... (잠시만 기다려주세요!) 🐾</div>
+    <div class="loading" id="loadingMsg">🐾 AI가 두뇌를 가동 중입니다... (10~20초 소요)</div>
 
     <div id="canvas-container">
         <canvas id="c" width="1280" height="720"></canvas>
     </div>
 
     <script>
-        // 1. 캔버스 초기화 (유튜브 썸네일 사이즈 1280x720)
         const canvas = new fabric.Canvas('c');
-        canvas.backgroundColor = '#222'; // 기본 배경색
+        canvas.backgroundColor = '#222';
         canvas.renderAll();
 
-        // 2. 이미지 업로드 및 AI 배경 제거 처리
         document.getElementById('imgLoader').addEventListener('change', async function(e) {
             const files = e.target.files;
             if (!files.length) return;
@@ -56,16 +54,18 @@
             for (let file of files) {
                 try {
                     console.log(`Processing: ${file.name}`);
-                    // @imgly 라이브러리로 배경 제거 (브라우저에서 바로 실행)
-                    const blob = await imglyRemoveBackground(file);
+                    loadingMsg.innerText = `⏳ ${file.name} 배경 지우는 중...`;
+                    
+                    // [핵심 수정] AI 모델 파일 위치를 강제로 지정해줍니다.
+                    const config = {
+                        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.0.4/dist/"
+                    };
+
+                    const blob = await imglyRemoveBackground(file, config);
                     const url = URL.createObjectURL(blob);
 
                     fabric.Image.fromURL(url, function(img) {
-                        // 이미지 크기 조정 (너무 크면 줄임)
-                        if (img.width > 500) {
-                            img.scaleToWidth(400);
-                        }
-                        // 캔버스 중앙에 배치
+                        if (img.width > 500) img.scaleToWidth(400);
                         img.set({
                             left: canvas.width / 2 - 200 + (Math.random() * 50),
                             top: canvas.height / 2 - 200 + (Math.random() * 50)
@@ -74,39 +74,27 @@
                         canvas.setActiveObject(img);
                     });
                 } catch (error) {
-                    console.error("배경 제거 실패:", error);
-                    alert(`${file.name} 처리 중 오류가 발생했어요 ㅠㅠ`);
+                    console.error(error);
+                    alert(`오류 발생: ${file.name}\n(파일 이름이 영어인지 확인해주시거나, 다른 이미지를 써보세요!)`);
                 }
             }
             loadingMsg.style.display = 'none';
+            loadingMsg.innerText = "완료!";
         });
 
-        // 3. 텍스트 추가 기능
         function addText() {
             const textVal = document.getElementById('textInput').value;
             if (!textVal) return;
-
             const text = new fabric.Text(textVal, {
-                left: 100,
-                top: 100,
-                fontFamily: 'Pretendard',
-                fontSize: 80,
-                fill: 'yellow',
-                stroke: 'black',
-                strokeWidth: 2,
-                fontWeight: 'bold',
-                shadow: new fabric.Shadow({ color: "rgba(0,0,0,0.8)", blur: 10, offsetX: 5, offsetY: 5 })
+                left: 100, top: 100, fontFamily: 'sans-serif', fontSize: 80,
+                fill: 'yellow', stroke: 'black', strokeWidth: 2, fontWeight: 'bold'
             });
             canvas.add(text);
             canvas.setActiveObject(text);
         }
 
-        // 4. 다운로드 기능
         function downloadImage() {
-            const dataURL = canvas.toDataURL({
-                format: 'png',
-                quality: 1.0
-            });
+            const dataURL = canvas.toDataURL({ format: 'png', quality: 1.0 });
             const link = document.createElement('a');
             link.download = 'thumbnail.png';
             link.href = dataURL;
@@ -114,19 +102,17 @@
             link.click();
             document.body.removeChild(link);
         }
-        
-        // 키보드 Delete 키로 객체 삭제
-        window.addEventListener('keydown', function(e) {
-            if(e.key === 'Delete') {
-                const activeObjects = canvas.getActiveObjects();
-                if (activeObjects.length) {
-                    canvas.discardActiveObject();
-                    activeObjects.forEach(function(obj) {
-                        canvas.remove(obj);
-                    });
-                }
+
+        function deleteObject() {
+            const activeObjects = canvas.getActiveObjects();
+            if (activeObjects.length) {
+                canvas.discardActiveObject();
+                activeObjects.forEach((obj) => canvas.remove(obj));
             }
-        });
+        }
+        
+        // 키보드 Delete 키 지원
+        window.addEventListener('keydown', (e) => { if(e.key === 'Delete') deleteObject(); });
     </script>
 </body>
 </html>
